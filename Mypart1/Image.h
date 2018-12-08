@@ -57,8 +57,6 @@ public:
 	char*	getImageData() { return Data; };
 	char*	getImagePath() { return ImagePath; }
 
-	void    setAntiAliasing(bool aliasing) { isAntiAliasing = aliasing; }
-
 	// Input Output operations
 	bool	ReadImage();
 	bool	WriteImage();

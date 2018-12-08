@@ -13,8 +13,6 @@
 #include "Image.h"
 #include <iostream>
 
-#define PI 3.14159265358979323846
-
 #define MAX_LOADSTRING 100
 
 // Global Variables:
@@ -30,6 +28,93 @@ LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 void 				ColorPixel(char* imgBuf, int w, int h, int x, int y);
 void				DrawLine(char* imgBuf, int w, int h, int x1, int y1, int x2, int y2);
+
+void CreateImage(byte* imgData, const int w, const int h, const int n) {
+	const double PI = 3.14159265358979323846;
+	int x1 = w / 2, y1 = h / 2;
+	int x2 = w - 1, y2 = y1;
+	for (int i = 0; i < n; i++) {
+		float angle = (360.0 / n) * (float)i;
+		float degree = angle * (PI / 180.0);
+
+		float tempX = cos(degree) * (x2 - x1) - sin(degree) * (y2 - y1) + x1;
+		float tempY = sin(degree) * (x2 - x1) + cos(degree) * (y2 - y1) + y1;
+
+		/*float slope = (tempY - y1) / (tempX - x1);
+		int x = ceil(tempX) < x1 ? 0 : w - 1;
+		int y = ceil(y1 + slope * (x - x1));
+		if (y < 0 || h - 1 < y) {
+		slope = (tempX - x1) / (tempY - y1);
+		y = (ceil(tempY) < y1 ? 0 : h - 1);
+		x = ceil(x1 + slope * (y - y1));
+		}*/
+
+		float slope = (tempX - x1) / (tempY - y1);
+		int y = (ceil(tempY) < y1 ? 0 : h - 1);
+		int x = ceil(x1 + slope * (y - y1));
+		if (x < 0 || w - 1 < x) {
+			slope = (tempY - y1) / (tempX - x1);
+			x = ceil(tempX) < x1 ? 0 : w - 1;
+			y = ceil(y1 + slope * (x - x1));
+		}
+
+		DrawLine((char*)imgData, w, h, x1, y1, x, y);
+	}
+}
+
+void ScaleDownImage(byte* imgData, int w, int h, float scale, bool isAntiAliasing) {
+	if (isAntiAliasing) {
+		for (int i = 0; (i * scale) < h; i++) {
+			int y = i * scale;
+			for (int j = 0; (j * scale) < w; j++) {
+				int x = j * scale;
+				long b = 0, g = 0, r = 0, a = 0, cnt = 0;;
+				for (int yy = max(0, y - 1); yy <= min(y + 1, h - 1); yy++) {
+					for (int xx = max(0, x - 1); xx <= min(x + 1, w - 1); xx++) {
+						b += imgData[(xx * 4) + (yy * w * 4) + 0];
+						g += imgData[(xx * 4) + (yy * w * 4) + 1];
+						r += imgData[(xx * 4) + (yy * w * 4) + 2];
+						a += imgData[(xx * 4) + (yy * w * 4) + 3];
+						cnt++;
+					}
+				}
+
+				/*imgData[(x * 4) + (y * w * 4) + 0] = ((byte)(b / cnt) <= 198 ? 0 : 0xFF);
+				imgData[(x * 4) + (y * w * 4) + 1] = ((byte)(g / cnt) <= 198 ? 0 : 0xFF);
+				imgData[(x * 4) + (y * w * 4) + 2] = ((byte)(r / cnt) <= 198 ? 0 : 0xFF);
+				imgData[(x * 4) + (y * w * 4) + 3] = ((byte)(a / cnt) <= 198 ? 0 : 0xFF);*/
+				imgData[(x * 4) + (y * w * 4) + 0] = (byte)(b / cnt);
+				imgData[(x * 4) + (y * w * 4) + 1] = (byte)(g / cnt);
+				imgData[(x * 4) + (y * w * 4) + 2] = (byte)(r / cnt);
+				imgData[(x * 4) + (y * w * 4) + 3] = (byte)(a / cnt);
+			}
+		}
+	}
+
+	int scaledWidth = w / scale;
+	int scaledHeight = h / scale;
+
+	byte* imgBuf = new byte[scaledWidth * scaledHeight * 4];
+	for (int i = 0; i < scaledHeight; i++) {
+		int y = i * scale;
+		for (int j = 0; j < scaledWidth; j++) {
+			int x = j * scale;
+			imgBuf[(j * 4) + (i * scaledWidth * 4) + 0] = imgData[(x * 4) + (y * w * 4) + 0];
+			imgBuf[(j * 4) + (i * scaledWidth * 4) + 1] = imgData[(x * 4) + (y * w * 4) + 1];
+			imgBuf[(j * 4) + (i * scaledWidth * 4) + 2] = imgData[(x * 4) + (y * w * 4) + 2];
+			imgBuf[(j * 4) + (i * scaledWidth * 4) + 3] = imgData[(x * 4) + (y * w * 4) + 3];
+		}
+	}
+
+	DrawLine((char*)imgBuf, scaledWidth, scaledHeight, 0, 0, 0, scaledHeight - 1);			// left
+	DrawLine((char*)imgBuf, scaledWidth, scaledHeight, 0, 0, scaledWidth - 1, 0);			// top
+	DrawLine((char*)imgBuf, scaledWidth, scaledHeight, scaledWidth - 1, 0, scaledWidth - 1, scaledHeight - 1);	// right
+	DrawLine((char*)imgBuf, scaledWidth, scaledHeight, scaledWidth - 1, scaledWidth - 1, 0, scaledHeight - 1);		// bottom
+
+	memset(imgData, NULL, sizeof(byte) * w * h * 4);
+	memcpy(imgData, imgBuf, sizeof(byte) * scaledWidth * scaledHeight * 4);
+	delete[] imgBuf;
+}
 
 
 // Main entry point for a windows application
@@ -48,140 +133,40 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	bool isAntiAliasing = false;
 	sscanf(lpCmdLine, "%d %f %d", &n, &scale, &aliasing);
 	isAntiAliasing = (1 == aliasing);
-	outImage.setAntiAliasing(isAntiAliasing);
-
+	
 	// Create a separate console window to display output to stdout
 	AllocConsole();
 	freopen("CONOUT$", "w", stdout);
 	printf("The first parameter was: %d\nThe second parameter was: %f\nThe third parameter was: %d\n", n, scale, aliasing);
 	
 	// Set up the images
-	int w = 512;
-	int h = 512;
+	const int w = 512;
+	const int h = 512;
 	inImage.setWidth(w);
 	inImage.setHeight(h);
 
 	outImage.setWidth(w / scale);
 	outImage.setHeight(h / scale);
 	
-	char* tempImagePath = new char[1];
-	tempImagePath[0] = 'a';
-	inImage.setImagePath(tempImagePath);
-
 	char* imgData = new char[w * h * 4];
-	char* rData = new char[w * h];
-	char* gData = new char[w * h];
-	char* bData = new char[w * h];
-	char* aData = new char[w * h];
-	for (int i = 0; i < w * h; ++i)
-	{
-		rData[i] = 255;
-		gData[i] = 255;
-		bData[i] = 255;
-		aData[i] = 255;
-	}
+	memset(imgData, 0xFF, sizeof(char) * w * h * 4);
 
-	for (int i = 0; i < w * h; ++i)
-	{
-		imgData[4*i] = bData[i];
-		imgData[4*i+1] = gData[i];
-		imgData[4*i+2] = rData[i];
-		imgData[4*i+3] = aData[i];
-	}
-	
-	// Draws a line
+	// Draws a boundary
 	DrawLine(imgData, w, h, 0, 0, 0, h - 1);			// left
 	DrawLine(imgData, w, h, 0, 0, w - 1, 0);			// top
 	DrawLine(imgData, w, h, w - 1, 0, w - 1, h - 1);	// right
 	DrawLine(imgData, w, h, w-1, h - 1, 0, h - 1);		// bottom
 
-	int x1 = w/2, y1 = h/2;
-	int x2 = w - 1, y2 = y1;
-	for (int i = 0; i < n; i++) {
-		float angle = (360.0 / n) * (float)i;
-		float degree = angle * (PI / 180.0);
-		
-		float tempX = cos(degree) * (x2 - x1) - sin(degree) * (y2 - y1) + x1;
-		float tempY = sin(degree) * (x2 - x1) + cos(degree) * (y2 - y1) + y1;
-
-		/*float slope = (tempY - y1) / (tempX - x1);
-		int x = ceil(tempX) < x1 ? 0 : w - 1;
-		int y = ceil(y1 + slope * (x - x1));
-		if (y < 0 || h - 1 < y) {
-			slope = (tempX - x1) / (tempY - y1);
-			y = (ceil(tempY) < y1 ? 0 : h - 1);
-			x = ceil(x1 + slope * (y - y1));
-		}*/
-
-		float slope = (tempX - x1) / (tempY - y1); 
-		int y = (ceil(tempY) < y1 ? 0 : h - 1); 
-		int x = ceil(x1 + slope * (y - y1)); 
-		if (x < 0 || w - 1 < x) {
-			slope = (tempY - y1) / (tempX - x1);
-			x = ceil(tempX) < x1 ? 0 : w - 1;
-			y = ceil(y1 + slope * (x - x1));
-		}
-
-		DrawLine(imgData, w, h, x1, y1, x, y);
-	}
-
+	// Create original 512x512 image
+	CreateImage((byte*)imgData, w, h, n);
 	inImage.setImageData(imgData);
 
 	char* imgData2 = new char[w * h * 4];
 	memcpy(imgData2, imgData, sizeof(char) * w * h * 4);
 
-	if (isAntiAliasing) {
-		for (int i = 0; (i * scale) < h; i++) {
-			int y = i * scale;
-			for (int j = 0; (j * scale) < w; j++) {
-				int x = j * scale;
-				long b = 0, g = 0, r = 0, a = 0, cnt = 0;;
-				for (int yy = max(0, y - 1); yy <= min(y + 1, h - 1); yy++) {
-					for (int xx = max(0, x - 1); xx <= min(x + 1, w - 1); xx++) {
-						b += imgData2[(xx * 4) + (yy * inImage.getWidth() * 4) + 0];
-						g += imgData2[(xx * 4) + (yy * inImage.getWidth() * 4) + 1];
-						r += imgData2[(xx * 4) + (yy * inImage.getWidth() * 4) + 2];
-						a += imgData2[(xx * 4) + (yy * inImage.getWidth() * 4) + 3];
-						cnt++;
-					}
-				}
-
-				imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 0] = (byte)(b / cnt);
-				imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 1] = (byte)(g / cnt);
-				imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 2] = (byte)(r / cnt);
-				imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 3] = (byte)(a / cnt);
-			}
-		}
-	}
-	
-	char* imgBuf = new char[outImage.getWidth() * outImage.getHeight() * 4];
-	for (int i = 0; i < outImage.getHeight(); i++) {
-		int y = i * scale;
-		for (int j = 0; j < outImage.getWidth(); j++) {
-			int x = j * scale;
-			imgBuf[(j * 4) + (i * outImage.getWidth() * 4) + 0] = imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 0];
-			imgBuf[(j * 4) + (i * outImage.getWidth() * 4) + 1] = imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 1];
-			imgBuf[(j * 4) + (i * outImage.getWidth() * 4) + 2] = imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 2];
-			imgBuf[(j * 4) + (i * outImage.getWidth() * 4) + 3] = imgData2[(x * 4) + (y * inImage.getWidth() * 4) + 3];
-		}
-	}
-
-	DrawLine(imgBuf, outImage.getWidth(), outImage.getHeight(), 0, 0, 0, outImage.getHeight() - 1);			// left
-	DrawLine(imgBuf, outImage.getWidth(), outImage.getHeight(), 0, 0, outImage.getWidth() - 1, 0);			// top
-	DrawLine(imgBuf, outImage.getWidth(), outImage.getHeight(), outImage.getWidth() - 1, 0, outImage.getWidth() - 1, outImage.getHeight() - 1);	// right
-	DrawLine(imgBuf, outImage.getWidth(), outImage.getHeight(), outImage.getWidth() - 1, outImage.getHeight() - 1, 0, outImage.getHeight() - 1);		// bottom
-
-	outImage.setImageData(imgBuf);
-
-	//outImage = inImage;
-
-	// Clean up old resources
-	delete[] rData;
-	delete[] gData;
-	delete[] bData;
-	delete[] aData;
-	delete[] imgData2;
-	delete[] tempImagePath;
+	// Careate scaled image
+	ScaleDownImage((byte*)imgData2, w, h, scale, isAntiAliasing);
+	outImage.setImageData(imgData2);
 
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -425,9 +410,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
    }
    return 0;
 }
-
-
-
 
 // Mesage handler for about box.
 LRESULT CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
