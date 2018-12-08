@@ -2,6 +2,7 @@
 //
 // Image.cpp : Defines the class operations on images
 //
+//
 //*****************************************************************************
 
 #include "Image.h"
