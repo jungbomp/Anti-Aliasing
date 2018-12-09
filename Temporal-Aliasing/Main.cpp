@@ -16,7 +16,7 @@
 
 #define PI 3.14159265358979323846
 
-#define ORIGIN_FPS 10
+#define ORIGIN_FPS 30
 
 #define MAX_LOADSTRING 100
 
@@ -86,7 +86,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	memcpy(imgData2, imgData, sizeof(char) * w * h * 4);
 	outImage.setImageData(imgData2);
 
-	timeBeginPeriod(1);
+	//timeBeginPeriod(1);
 	delay = (int)(1000 / ORIGIN_FPS);
 	unitAngle = ((360.0 * speedOfRotation) / ORIGIN_FPS);
 	samplingDelay = (int)(1000 / fps);
