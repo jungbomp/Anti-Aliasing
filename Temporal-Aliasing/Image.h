@@ -33,9 +33,6 @@ private:
 	int		Height;					// Height of Image
 	char	ImagePath[_MAX_PATH];	// Image location
 	char*	Data;					// RGB data of the image
-
-	bool	isAntiAliasing;			// Aliasing flag
-
 public:
 	// Constructor
 	MyImage();
@@ -56,8 +53,6 @@ public:
 	int		getHeight() { return Height; };
 	char*	getImageData() { return Data; };
 	char*	getImagePath() { return ImagePath; }
-
-	void    setAntiAliasing(bool aliasing) { isAntiAliasing = aliasing; }
 
 	// Input Output operations
 	bool	ReadImage();
