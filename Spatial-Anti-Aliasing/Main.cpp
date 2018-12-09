@@ -362,12 +362,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				hdc = BeginPaint(hWnd, &ps);
 				// TO DO: Add any drawing code here...
-				char text[1000];
-				strcpy(text, "Original image (Left)  Image after modification (Right)\n");
-				DrawText(hdc, text, strlen(text), &rt, DT_LEFT);
-				strcpy(text, "\nUpdate program with your code to modify input image");
-				DrawText(hdc, text, strlen(text), &rt, DT_LEFT);
-
+				
 				BITMAPINFO bmi;
 				// CBitmap bitmap;
 				memset(&bmi,0,sizeof(bmi));
