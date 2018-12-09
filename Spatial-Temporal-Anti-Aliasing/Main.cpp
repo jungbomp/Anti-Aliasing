@@ -17,6 +17,8 @@
 
 #define PI 3.14159265358979323846
 
+#define ORIGIN_FPS 30
+
 #define MAX_LOADSTRING 100
 
 // Global Variables:
@@ -27,13 +29,17 @@ TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// The title bar text
 
 MMRESULT timerID;
+MMRESULT samplingTimerID;
 float currentAngle = 0.0;
+float unitAngle = 0.0;
 int numOfLine = 0;
 float speedOfRotation = 0.0;
 int currentSec = 0;
 float fps = 0.0;
 float scale = 0.0;
 bool isAntiAliasing = false;
+int delay = 0;
+int samplingDelay = 0;
 
 
 // Foward declarations of functions included in this code module:
@@ -44,10 +50,10 @@ LRESULT CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 void 				ColorPixel(char* imgBuf, int w, int h, int x, int y, byte r = 0, byte g = 0, byte b = 0);
 void				DrawLine(char* imgBuf, int w, int h, int x1, int y1, int x2, int y2, byte r = 0, byte g = 0, byte b = 0);
 void				DrawRadial(char* imgData, int width, int height, float currentAngle, int numOfLine);
-void				AntiAliasing(char* imgData, int width, int height, float scale);
+void				AntiAliasing(byte* imgData, int width, int height, float scale);
 void				ScaleImage(char* imgData, int width, int height, char* destData, float scale);
-void CALLBACK		TimeProc(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2);
-
+void CALLBACK		TimeProcForOrigin(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2);
+void CALLBACK		TimeProcForSampling(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2);
 
 // Main entry point for a windows application
 int APIENTRY WinMain(HINSTANCE hInstance,
@@ -84,31 +90,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	outImage.setWidth(w / scale);
 	outImage.setHeight(h / scale);
 
-	char* tempImagePath = new char[1];
-	tempImagePath[0] = 'a';
-	inImage.setImagePath(tempImagePath);
-
 	char* imgData = new char[w * h * 4];
-	char* rData = new char[w * h];
-	char* gData = new char[w * h];
-	char* bData = new char[w * h];
-	char* aData = new char[w * h];
-	for (int i = 0; i < w * h; ++i)
-	{
-		rData[i] = 255;
-		gData[i] = 255;
-		bData[i] = 255;
-		aData[i] = 255;
-	}
-
-	for (int i = 0; i < w * h; ++i)
-	{
-		imgData[4*i] = bData[i];
-		imgData[4*i+1] = gData[i];
-		imgData[4*i+2] = rData[i];
-		imgData[4*i+3] = aData[i];
-	}
-
+	memset(imgData, 0xFF, sizeof(char) * w * h * 4);
 	inImage.setImageData(imgData);
 
 	char* imgData2 = new char[outImage.getWidth() * outImage.getHeight() * 4];
@@ -116,14 +99,11 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	outImage.setImageData(imgData2);
 
 	timeBeginPeriod(1);
-	timerID = timeSetEvent(1, 0, TimeProc, 0, TIME_PERIODIC);
-
-	// Clean up old resources
-	delete[] rData;
-	delete[] gData;
-	delete[] bData;
-	delete[] aData;
-	delete[] tempImagePath;
+	delay = (int)(1000 / ORIGIN_FPS);
+	unitAngle = ((360.0 * speedOfRotation) / ORIGIN_FPS);
+	samplingDelay = (int)(1000 / (isAntiAliasing ? max(fps, speedOfRotation * 2 + 2) : fps));
+	timerID = timeSetEvent(delay, 1, TimeProcForOrigin, 0, TIME_PERIODIC);
+	samplingTimerID = timeSetEvent(samplingDelay, 1, TimeProcForSampling, 0, TIME_PERIODIC);
 
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -227,7 +207,7 @@ void DrawRadial(char* imgData, int width, int height, float currentAngle, int nu
 	}
 }
 
-void AntiAliasing(char* imgData, int width, int height, float scale) {
+void AntiAliasing(byte* imgData, int width, int height, float scale) {
 	for (int i = 0; (i * scale) < height; i++) {
 		int y = i * scale;
 		for (int j = 0; (j * scale) < width; j++) {
@@ -266,41 +246,47 @@ void ScaleImage(char* imgData, int width, int height, char* destData, float scal
 	}
 }
 
-void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2) {
-	if (1000 < ++currentSec) {
-		currentSec = 0;
-	}
+void CALLBACK TimeProcForOrigin(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2) {
 
 	char* imgData = inImage.getImageData();
-	if (0 == currentSec % (int)(1000 / 60)) {
-		char* imgData = inImage.getImageData();
-		memset(imgData, 0xFF, sizeof(char) * inImage.getWidth() * inImage.getHeight() * 4);
-		DrawRadial(inImage.getImageData(), inImage.getWidth(), inImage.getHeight(), currentAngle, numOfLine);
+	memset(imgData, 0xFF, sizeof(char) * inImage.getWidth() * inImage.getHeight() * 4);
+	DrawRadial(inImage.getImageData(), inImage.getWidth(), inImage.getHeight(), currentAngle, numOfLine);
 
-		currentAngle += ((360.0 * speedOfRotation) / 60.0);
-		currentAngle -= (360.0 < currentAngle ? 360.0 : 0.0);
-	}
+	currentAngle += unitAngle;
+	currentAngle -= (360.0 < currentAngle ? 360.0 : 0.0);
 
-	if (0 == currentSec % (int)(1000 / (isAntiAliasing ? max(fps, speedOfRotation * 2 + 2) : fps))) {
-		char* imgData2 = outImage.getImageData();
-		memset(imgData2, 0xFF, sizeof(char) * outImage.getWidth() * outImage.getHeight() * 4);
+	RECT rt;
+	rt.top = 100;
+	rt.left = 100;
+	rt.bottom = rt.top + inImage.getHeight();
+	rt.right = rt.left + inImage.getWidth();
 
-		char* imgBuf = outImage.getImageData();
+	//GetClientRect(gWnd, &rt);
+	InvalidateRect(gWnd, &rt, false);
+}
 
-		if (isAntiAliasing) {
-			char* imgBuf = new char[inImage.getWidth() * inImage.getHeight() * 4];
-			memcpy(imgBuf, imgData, sizeof(char) * inImage.getWidth() *  inImage.getHeight() * 4);
-			AntiAliasing(imgBuf, inImage.getWidth(), inImage.getHeight(), scale);
-			ScaleImage(imgBuf, inImage.getWidth(), inImage.getHeight(), imgData2, scale);
-			delete[] imgBuf;
-		}
-		else {
-			ScaleImage(imgData, inImage.getWidth(), inImage.getHeight(), imgData2, scale);
-		}
+void CALLBACK TimeProcForSampling(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2) {
+	char* imgData = inImage.getImageData();
+	char* imgData2 = outImage.getImageData();
+	memset(imgData2, 0xFF, sizeof(char) * outImage.getWidth() * outImage.getHeight() * 4);
+
+	if (isAntiAliasing) {
+		char* imgBuf = new char[inImage.getWidth() * inImage.getHeight() * 4];
+		memcpy(imgBuf, imgData, sizeof(char) * inImage.getWidth() *  inImage.getHeight() * 4);
+		AntiAliasing((byte*)imgBuf, inImage.getWidth(), inImage.getHeight(), scale);
+		ScaleImage(imgBuf, inImage.getWidth(), inImage.getHeight(), imgData2, scale);
+		delete[] imgBuf;
+	} else {
+		ScaleImage(imgData, inImage.getWidth(), inImage.getHeight(), imgData2, scale);
 	}
 
 	RECT rt;
-	GetClientRect(gWnd, &rt);
+	rt.top = 100;
+	rt.left = 150 + inImage.getWidth();
+	rt.bottom = rt.top + outImage.getHeight();
+	rt.right = rt.left + outImage.getWidth();
+
+	//GetClientRect(gWnd, &rt);
 	InvalidateRect(gWnd, &rt, false);
 }
 
@@ -420,47 +406,47 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				hdc = BeginPaint(hWnd, &ps);
 				// TO DO: Add any drawing code here...
-				char text[1000];
-				strcpy(text, "Original image (Left)  Image after modification (Right)\n");
-				DrawText(hdc, text, strlen(text), &rt, DT_LEFT);
-				strcpy(text, "\nUpdate program with your code to modify input image");
-				DrawText(hdc, text, strlen(text), &rt, DT_LEFT);
+				if (100 == ps.rcPaint.left) {
 
-				BITMAPINFO bmi;
-				// CBitmap bitmap;
-				memset(&bmi,0,sizeof(bmi));
-				bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
-				bmi.bmiHeader.biWidth = inImage.getWidth();
-				bmi.bmiHeader.biHeight = -inImage.getHeight();  // Use negative height.  DIB is top-down.
-				bmi.bmiHeader.biPlanes = 1;
-				bmi.bmiHeader.biBitCount = 32;
-				bmi.bmiHeader.biCompression = BI_RGB;
-				bmi.bmiHeader.biSizeImage = inImage.getWidth()*inImage.getHeight();
+					BITMAPINFO bmi;
+					// CBitmap bitmap;
+					memset(&bmi, 0, sizeof(bmi));
+					bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+					bmi.bmiHeader.biWidth = inImage.getWidth();
+					bmi.bmiHeader.biHeight = -inImage.getHeight();  // Use negative height.  DIB is top-down.
+					bmi.bmiHeader.biPlanes = 1;
+					bmi.bmiHeader.biBitCount = 32;
+					bmi.bmiHeader.biCompression = BI_RGB;
+					bmi.bmiHeader.biSizeImage = inImage.getWidth()*inImage.getHeight();
 
-				SetDIBitsToDevice(hdc,
-								  100,100,inImage.getWidth(),inImage.getHeight(),
-								  0,0,0,inImage.getHeight(),
-								  inImage.getImageData(),&bmi,DIB_RGB_COLORS);
+					SetDIBitsToDevice(hdc,
+						100, 100, inImage.getWidth(), inImage.getHeight(),
+						0, 0, 0, inImage.getHeight(),
+						inImage.getImageData(), &bmi, DIB_RGB_COLORS);
+				}
+				else if (inImage.getWidth() + 150 == ps.rcPaint.left) {
+					BITMAPINFO bmi;
+					memset(&bmi, 0, sizeof(bmi));
+					bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+					bmi.bmiHeader.biWidth = outImage.getWidth();
+					bmi.bmiHeader.biHeight = -outImage.getHeight();  // Use negative height.  DIB is top-down.
+					bmi.bmiHeader.biPlanes = 1;
+					bmi.bmiHeader.biBitCount = 32;
+					bmi.bmiHeader.biCompression = BI_RGB;
+					bmi.bmiHeader.biSizeImage = outImage.getWidth()*outImage.getHeight();
 
-				memset(&bmi, 0, sizeof(bmi));
-				bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
-				bmi.bmiHeader.biWidth = outImage.getWidth();
-				bmi.bmiHeader.biHeight = -outImage.getHeight();  // Use negative height.  DIB is top-down.
-				bmi.bmiHeader.biPlanes = 1;
-				bmi.bmiHeader.biBitCount = 32;
-				bmi.bmiHeader.biCompression = BI_RGB;
-				bmi.bmiHeader.biSizeImage = outImage.getWidth()*outImage.getHeight();
-
-				SetDIBitsToDevice(hdc,
-					inImage.getWidth() + 150, 100, outImage.getWidth(), outImage.getHeight(),
-					0, 0, 0, outImage.getHeight(),
-					outImage.getImageData(), &bmi, DIB_RGB_COLORS);
+					SetDIBitsToDevice(hdc,
+						inImage.getWidth() + 150, 100, outImage.getWidth(), outImage.getHeight(),
+						0, 0, 0, outImage.getHeight(),
+						outImage.getImageData(), &bmi, DIB_RGB_COLORS);
+				}
 
 				EndPaint(hWnd, &ps);
 			}
 			break;
 		case WM_DESTROY:
 			timeKillEvent(timerID);
+			timeKillEvent(samplingTimerID);
 			timeEndPeriod(1);
 			PostQuitMessage(0);
 			break;
